@@ -1,7 +1,7 @@
 {
   "name": "drawing-search-test",
   "version": "1.0.0",
-  "description": "図面検索システム - ブラウザテスト版",
+  "description": "図面検索システム",
   "main": "main.js",
   "author": "",
   "license": "MIT",

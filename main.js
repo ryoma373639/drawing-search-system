@@ -821,7 +821,7 @@ function startServer() {
   return new Promise((resolve, reject) => {
     server = expressApp.listen(PORT, () => {
       console.log(`\n========================================`);
-      console.log(`  図面検索システム - テスト版`);
+      console.log(`  図面検索システム`);
       console.log(`========================================`);
       console.log(`  🌐 サーバー起動: http://localhost:${PORT}`);
       console.log(`  💾 データ保存先: ${filesDir}`);
@@ -845,7 +845,7 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true
     },
-    title: '図面検索システム - テスト版'
+    title: '図面検索システム'
   });
 
   // サーバーが起動するまで待ってからロード
