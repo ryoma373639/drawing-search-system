@@ -42,6 +42,26 @@ function initDatabase() {
     )
   `);
 
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS tags (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      createdAt TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS drawing_tags (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      drawingId INTEGER NOT NULL,
+      tagId INTEGER NOT NULL,
+      createdAt TEXT DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (drawingId) REFERENCES drawings (id) ON DELETE CASCADE,
+      FOREIGN KEY (tagId) REFERENCES tags (id) ON DELETE CASCADE,
+      UNIQUE (drawingId, tagId)
+    )
+  `);
+
   console.log('データベース初期化完了:', dbPath);
   console.log('ファイル保存先:', filesDir);
 }
@@ -235,6 +255,7 @@ function startServer() {
       const sortBy = req.query.sortBy || 'id';
       const sortOrder = req.query.sortOrder || 'desc';
       const fileType = req.query.fileType || '';
+      const tagId = req.query.tagId || ''; // タグフィルター
 
       // ソート項目のバリデーション
       const allowedSortFields = ['id', 'fileName', 'fileSize', 'uploadedAt', 'drawingNumber', 'fileType'];
@@ -264,6 +285,17 @@ function startServer() {
         params.push(fileType);
       }
 
+      // タグフィルター
+      if (tagId) {
+        const tagFilterClause = 'id IN (SELECT drawingId FROM drawing_tags WHERE tagId = ?)';
+        if (whereClause) {
+          whereClause += ` AND ${tagFilterClause}`;
+        } else {
+          whereClause = `WHERE ${tagFilterClause}`;
+        }
+        params.push(parseInt(tagId));
+      }
+
       // SQLクエリの実行
       const sql = `
         SELECT id, fileName, fileType, fileSize, drawingNumber, productName, partName, clientName, uploadedAt
@@ -275,7 +307,19 @@ function startServer() {
 
       const results = db.prepare(sql).all(...params);
 
-      res.json({ results, total: results.length });
+      // 各図面のタグを取得
+      const resultsWithTags = results.map(drawing => {
+        const tags = db.prepare(`
+          SELECT t.* FROM tags t
+          JOIN drawing_tags dt ON dt.tagId = t.id
+          WHERE dt.drawingId = ?
+          ORDER BY t.name ASC
+        `).all(drawing.id);
+
+        return { ...drawing, tags };
+      });
+
+      res.json({ results: resultsWithTags, total: resultsWithTags.length });
 
     } catch (error) {
       console.error('Search error:', error);
@@ -565,6 +609,118 @@ function startServer() {
       res.json({ success: true, message: '全てのデータを削除しました' });
     } catch (error) {
       console.error('Clear error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // タグAPI: 全タグ取得
+  expressApp.get('/api/tags', (req, res) => {
+    try {
+      const tags = db.prepare('SELECT * FROM tags ORDER BY name ASC').all();
+      res.json({ tags });
+    } catch (error) {
+      console.error('Get tags error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // タグAPI: タグ作成
+  expressApp.post('/api/tags', (req, res) => {
+    try {
+      const { name } = req.body;
+
+      if (!name || !name.trim()) {
+        return res.status(400).json({ error: 'タグ名を入力してください' });
+      }
+
+      const trimmedName = name.trim();
+
+      // 既存チェック
+      const existing = db.prepare('SELECT id FROM tags WHERE name = ?').get(trimmedName);
+      if (existing) {
+        return res.status(400).json({ error: 'このタグは既に存在します' });
+      }
+
+      const result = db.prepare('INSERT INTO tags (name) VALUES (?)').run(trimmedName);
+      const tag = db.prepare('SELECT * FROM tags WHERE id = ?').get(result.lastInsertRowid);
+
+      res.json({ success: true, tag });
+    } catch (error) {
+      console.error('Create tag error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // タグAPI: タグ削除
+  expressApp.delete('/api/tags/:id', (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+
+      // drawing_tagsも自動削除される（CASCADE）
+      db.prepare('DELETE FROM tags WHERE id = ?').run(id);
+
+      res.json({ success: true, message: 'タグを削除しました' });
+    } catch (error) {
+      console.error('Delete tag error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // 図面タグAPI: 図面のタグ取得
+  expressApp.get('/api/drawing/:id/tags', (req, res) => {
+    try {
+      const drawingId = parseInt(req.params.id);
+
+      const tags = db.prepare(`
+        SELECT t.* FROM tags t
+        JOIN drawing_tags dt ON dt.tagId = t.id
+        WHERE dt.drawingId = ?
+        ORDER BY t.name ASC
+      `).all(drawingId);
+
+      res.json({ tags });
+    } catch (error) {
+      console.error('Get drawing tags error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // 図面タグAPI: 図面にタグを追加
+  expressApp.post('/api/drawing/:id/tags', (req, res) => {
+    try {
+      const drawingId = parseInt(req.params.id);
+      const { tagId } = req.body;
+
+      if (!tagId) {
+        return res.status(400).json({ error: 'タグIDが必要です' });
+      }
+
+      // 既に追加されているかチェック
+      const existing = db.prepare('SELECT id FROM drawing_tags WHERE drawingId = ? AND tagId = ?').get(drawingId, tagId);
+      if (existing) {
+        return res.status(400).json({ error: 'このタグは既に追加されています' });
+      }
+
+      db.prepare('INSERT INTO drawing_tags (drawingId, tagId) VALUES (?, ?)').run(drawingId, tagId);
+
+      res.json({ success: true, message: 'タグを追加しました' });
+    } catch (error) {
+      console.error('Add tag to drawing error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // 図面タグAPI: 図面からタグを削除
+  expressApp.delete('/api/drawing/:drawingId/tag/:tagId', (req, res) => {
+    try {
+      const drawingId = parseInt(req.params.drawingId);
+      const tagId = parseInt(req.params.tagId);
+
+      db.prepare('DELETE FROM drawing_tags WHERE drawingId = ? AND tagId = ?').run(drawingId, tagId);
+
+      res.json({ success: true, message: 'タグを削除しました' });
+    } catch (error) {
+      console.error('Remove tag from drawing error:', error);
       res.status(500).json({ error: error.message });
     }
   });

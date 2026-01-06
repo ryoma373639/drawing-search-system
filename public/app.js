@@ -16,22 +16,31 @@ const statsText = document.getElementById('statsText');
 const sortBySelect = document.getElementById('sortBy');
 const sortOrderSelect = document.getElementById('sortOrder');
 const fileTypeFilter = document.getElementById('fileTypeFilter');
+const tagFilter = document.getElementById('tagFilter');
 const resetFilterBtn = document.getElementById('resetFilter');
 
 // エクスポートボタン
 const exportCsvBtn = document.getElementById('exportCsvBtn');
 
+// タグ関連要素
+const tagSelect = document.getElementById('tagSelect');
+const addTagBtn = document.getElementById('addTagBtn');
+const currentTagsContainer = document.getElementById('currentTags');
+
 // 初期化
 let isUploading = false;
+let allTags = []; // 全タグリスト
 
 // ローカルストレージからソート設定を読み込み
 const savedSortBy = localStorage.getItem('sortBy') || 'id';
 const savedSortOrder = localStorage.getItem('sortOrder') || 'desc';
 const savedFileType = localStorage.getItem('fileType') || '';
+const savedTagId = localStorage.getItem('tagId') || '';
 
 sortBySelect.value = savedSortBy;
 sortOrderSelect.value = savedSortOrder;
 fileTypeFilter.value = savedFileType;
+tagFilter.value = savedTagId;
 
 // ファイルアップロードボタン
 uploadBtn.addEventListener('click', () => {
@@ -187,17 +196,49 @@ async function updateStats() {
   }
 }
 
+// タグを読み込み
+async function loadTags() {
+  try {
+    const response = await fetch('/api/tags');
+    const data = await response.json();
+    allTags = data.tags || [];
+
+    // タグフィルタードロップダウンを更新
+    tagFilter.innerHTML = '<option value="">すべて</option>';
+    allTags.forEach(tag => {
+      const option = document.createElement('option');
+      option.value = tag.id;
+      option.textContent = tag.name;
+      tagFilter.appendChild(option);
+    });
+
+    // 編集モーダルのタグセレクトを更新
+    tagSelect.innerHTML = '<option value="">タグを選択...</option>';
+    allTags.forEach(tag => {
+      const option = document.createElement('option');
+      option.value = tag.id;
+      option.textContent = tag.name;
+      tagSelect.appendChild(option);
+    });
+
+  } catch (error) {
+    console.error('Load tags error:', error);
+  }
+}
+
 // 検索実行
 async function performSearch() {
   const query = searchInput.value.trim();
   const sortBy = sortBySelect.value;
   const sortOrder = sortOrderSelect.value;
   const fileType = fileTypeFilter.value;
+  const tagId = tagFilter.value;
 
   // ソート設定をローカルストレージに保存
   localStorage.setItem('sortBy', sortBy);
   localStorage.setItem('sortOrder', sortOrder);
   localStorage.setItem('fileType', fileType);
+  localStorage.setItem('tagId', tagId);
 
   // ローディング表示
   resultsList.innerHTML = '<div class="loading">検索中</div>';
@@ -214,6 +255,10 @@ async function performSearch() {
 
     if (fileType) {
       params.append('fileType', fileType);
+    }
+
+    if (tagId) {
+      params.append('tagId', tagId);
     }
 
     const response = await fetch(`/api/search?${params.toString()}`);
@@ -286,6 +331,15 @@ function createResultItem(result) {
     metaItems.push(`<div class="meta-item"><span class="meta-label">サイズ:</span>${fileSize}</div>`);
   }
 
+  // タグ表示
+  let tagsHtml = '';
+  if (result.tags && result.tags.length > 0) {
+    const tagBadges = result.tags.map(tag =>
+      `<span class="tag-badge tag-badge-small">${escapeHtml(tag.name)}</span>`
+    ).join('');
+    tagsHtml = `<div class="tags-container" style="margin-top: 10px;">${tagBadges}</div>`;
+  }
+
   // プレビュー可能なファイルタイプかチェック
   const previewableTypes = ['pdf', 'jpg', 'jpeg', 'png', 'tiff', 'tif'];
   const isPreviewable = previewableTypes.includes(result.fileType);
@@ -300,6 +354,7 @@ function createResultItem(result) {
     <div class="result-meta">
       ${metaItems.join('')}
     </div>
+    ${tagsHtml}
     <div class="result-actions">
       ${isPreviewable ? `<button class="action-btn preview-btn" data-id="${result.id}">👁️ プレビュー</button>` : ''}
       <button class="action-btn download-btn" data-id="${result.id}">📥 ダウンロード</button>
@@ -456,18 +511,21 @@ searchInput.addEventListener('keypress', (e) => {
 sortBySelect.addEventListener('change', performSearch);
 sortOrderSelect.addEventListener('change', performSearch);
 fileTypeFilter.addEventListener('change', performSearch);
+tagFilter.addEventListener('change', performSearch);
 
 // フィルターリセット
 resetFilterBtn.addEventListener('click', () => {
   sortBySelect.value = 'id';
   sortOrderSelect.value = 'desc';
   fileTypeFilter.value = '';
+  tagFilter.value = '';
   searchInput.value = '';
 
   // ローカルストレージをクリア
   localStorage.removeItem('sortBy');
   localStorage.removeItem('sortOrder');
   localStorage.removeItem('fileType');
+  localStorage.removeItem('tagId');
 
   performSearch();
 });
@@ -504,8 +562,9 @@ clearBtn.addEventListener('click', async () => {
   }
 });
 
-// 初期化: 統計情報を取得
+// 初期化: 統計情報とタグを取得
 updateStats();
+loadTags();
 
 // 編集モーダル要素
 const editModal = document.getElementById('editModal');
@@ -520,7 +579,7 @@ const editPartNameInput = document.getElementById('editPartName');
 const editClientNameInput = document.getElementById('editClientName');
 
 // 編集モーダルを開く
-function openEditModal(drawing) {
+async function openEditModal(drawing) {
   editIdInput.value = drawing.id;
   editFileNameInput.value = drawing.fileName;
   editDrawingNumberInput.value = drawing.drawingNumber || '';
@@ -528,7 +587,99 @@ function openEditModal(drawing) {
   editPartNameInput.value = drawing.partName || '';
   editClientNameInput.value = drawing.clientName || '';
 
+  // タグを読み込み
+  await loadDrawingTags(drawing.id);
+
   editModal.classList.add('show');
+}
+
+// 図面のタグを読み込み
+async function loadDrawingTags(drawingId) {
+  try {
+    const response = await fetch(`/api/drawing/${drawingId}/tags`);
+    const data = await response.json();
+    const tags = data.tags || [];
+
+    // タグ表示を更新
+    currentTagsContainer.innerHTML = '';
+    tags.forEach(tag => {
+      const badge = document.createElement('span');
+      badge.className = 'tag-badge';
+      badge.innerHTML = `
+        ${escapeHtml(tag.name)}
+        <button class="tag-remove" data-tag-id="${tag.id}" data-drawing-id="${drawingId}">&times;</button>
+      `;
+
+      // 削除ボタンのイベント
+      const removeBtn = badge.querySelector('.tag-remove');
+      removeBtn.addEventListener('click', async () => {
+        await removeTagFromDrawing(drawingId, tag.id);
+      });
+
+      currentTagsContainer.appendChild(badge);
+    });
+
+  } catch (error) {
+    console.error('Load drawing tags error:', error);
+  }
+}
+
+// タグを図面に追加
+async function addTagToDrawing(drawingId, tagId) {
+  try {
+    const response = await fetch(`/api/drawing/${drawingId}/tags`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ tagId })
+    });
+
+    const data = await response.json();
+
+    if (response.ok && data.success) {
+      // タグ表示を再読み込み
+      await loadDrawingTags(drawingId);
+      statusText.textContent = data.message;
+
+      setTimeout(() => {
+        statusText.textContent = '準備完了';
+      }, 2000);
+    } else {
+      throw new Error(data.error || 'タグの追加に失敗しました');
+    }
+
+  } catch (error) {
+    console.error('Add tag error:', error);
+    alert(`エラー: ${error.message}`);
+  }
+}
+
+// タグを図面から削除
+async function removeTagFromDrawing(drawingId, tagId) {
+  try {
+    const response = await fetch(`/api/drawing/${drawingId}/tag/${tagId}`, {
+      method: 'DELETE'
+    });
+
+    const data = await response.json();
+
+    if (response.ok && data.success) {
+      // タグ表示を再読み込み
+      await loadDrawingTags(drawingId);
+      statusText.textContent = data.message;
+
+      setTimeout(() => {
+        statusText.textContent = '準備完了';
+      }, 2000);
+    } else {
+      throw new Error(data.error || 'タグの削除に失敗しました');
+    }
+
+  } catch (error) {
+    console.error('Remove tag error:', error);
+    alert(`エラー: ${error.message}`);
+  }
 }
 
 // 編集モーダルを閉じる
@@ -603,6 +754,22 @@ saveEditBtn.addEventListener('click', async () => {
       statusText.textContent = '準備完了';
     }, 3000);
   }
+});
+
+// タグ追加ボタン
+addTagBtn.addEventListener('click', async () => {
+  const tagId = tagSelect.value;
+  const drawingId = parseInt(editIdInput.value);
+
+  if (!tagId) {
+    alert('タグを選択してください');
+    return;
+  }
+
+  await addTagToDrawing(drawingId, tagId);
+
+  // セレクトをリセット
+  tagSelect.value = '';
 });
 
 // CSVエクスポート

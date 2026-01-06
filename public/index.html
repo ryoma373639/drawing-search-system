@@ -75,6 +75,13 @@
           <option value="tif">TIF</option>
         </select>
       </div>
+      <div class="filter-group">
+        <label for="tagFilter">タグ:</label>
+        <select id="tagFilter" class="filter-select">
+          <option value="">すべて</option>
+          <!-- タグはJavaScriptで動的に読み込まれます -->
+        </select>
+      </div>
       <button id="resetFilter" class="btn-secondary-small">🔄 リセット</button>
     </div>
 
@@ -136,6 +143,19 @@
           <div class="form-group">
             <label for="editClientName">施主名</label>
             <input type="text" id="editClientName" class="form-input" placeholder="施主名を入力">
+          </div>
+          <div class="form-group">
+            <label>タグ</label>
+            <div id="currentTags" class="tags-container">
+              <!-- 現在のタグがここに表示されます -->
+            </div>
+            <div class="tag-add-container">
+              <select id="tagSelect" class="filter-select" style="flex: 1;">
+                <option value="">タグを選択...</option>
+                <!-- タグはJavaScriptで動的に読み込まれます -->
+              </select>
+              <button type="button" id="addTagBtn" class="btn-secondary-small">+ 追加</button>
+            </div>
           </div>
         </form>
       </div>

@@ -567,3 +567,52 @@ body {
   justify-content: center;
   background-color: #f5f5f5;
 }
+
+/* タグ関連 */
+.tags-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+  min-height: 32px;
+}
+
+.tag-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #667eea;
+  color: white;
+  padding: 4px 10px;
+  border-radius: 16px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.tag-badge-small {
+  font-size: 12px;
+  padding: 2px 8px;
+}
+
+.tag-remove {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0;
+  margin-left: 2px;
+  line-height: 1;
+  opacity: 0.8;
+  transition: opacity 0.2s;
+}
+
+.tag-remove:hover {
+  opacity: 1;
+}
+
+.tag-add-container {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
