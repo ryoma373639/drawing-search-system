@@ -286,6 +286,65 @@ function startServer() {
     }
   });
 
+  // メタデータ更新API
+  expressApp.put('/api/drawing/:id', (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { drawingNumber, productName, partName, clientName } = req.body;
+
+      // ファイルが存在するか確認
+      const drawing = db.prepare('SELECT * FROM drawings WHERE id = ?').get(id);
+
+      if (!drawing) {
+        return res.status(404).json({ error: 'ファイルが見つかりません' });
+      }
+
+      // バリデーション（オプショナルフィールドなので空文字も許可）
+      const updates = {
+        drawingNumber: drawingNumber !== undefined ? String(drawingNumber).trim() : drawing.drawingNumber,
+        productName: productName !== undefined ? String(productName).trim() : drawing.productName,
+        partName: partName !== undefined ? String(partName).trim() : drawing.partName,
+        clientName: clientName !== undefined ? String(clientName).trim() : drawing.clientName
+      };
+
+      // データベースを更新
+      db.prepare(`
+        UPDATE drawings
+        SET drawingNumber = ?, productName = ?, partName = ?, clientName = ?
+        WHERE id = ?
+      `).run(
+        updates.drawingNumber,
+        updates.productName,
+        updates.partName,
+        updates.clientName,
+        id
+      );
+
+      // 更新後のデータを取得
+      const updatedDrawing = db.prepare('SELECT * FROM drawings WHERE id = ?').get(id);
+
+      res.json({
+        success: true,
+        message: 'メタデータを更新しました',
+        drawing: {
+          id: updatedDrawing.id,
+          fileName: updatedDrawing.fileName,
+          fileType: updatedDrawing.fileType,
+          fileSize: updatedDrawing.fileSize,
+          drawingNumber: updatedDrawing.drawingNumber,
+          productName: updatedDrawing.productName,
+          partName: updatedDrawing.partName,
+          clientName: updatedDrawing.clientName,
+          uploadedAt: updatedDrawing.uploadedAt
+        }
+      });
+
+    } catch (error) {
+      console.error('Update error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // 統計情報API
   expressApp.get('/api/stats', (req, res) => {
     try {

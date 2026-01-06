@@ -246,6 +246,7 @@ function createResultItem(result) {
     </div>
     <div class="result-actions">
       <button class="action-btn download-btn" data-id="${result.id}">📥 ダウンロード</button>
+      <button class="action-btn edit-btn" data-id="${result.id}">✏️ 編集</button>
       <button class="action-btn delete-btn" data-id="${result.id}">🗑️ 削除</button>
     </div>
   `;
@@ -255,6 +256,13 @@ function createResultItem(result) {
   downloadBtn.addEventListener('click', async (e) => {
     e.stopPropagation();
     await downloadFile(result.id, result.fileName);
+  });
+
+  // 編集ボタン
+  const editBtn = div.querySelector('.edit-btn');
+  editBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    openEditModal(result);
   });
 
   // 削除ボタン
@@ -432,3 +440,101 @@ clearBtn.addEventListener('click', async () => {
 
 // 初期化: 統計情報を取得
 updateStats();
+
+// 編集モーダル要素
+const editModal = document.getElementById('editModal');
+const closeEditModalBtn = document.getElementById('closeEditModal');
+const cancelEditBtn = document.getElementById('cancelEdit');
+const saveEditBtn = document.getElementById('saveEdit');
+const editIdInput = document.getElementById('editId');
+const editFileNameInput = document.getElementById('editFileName');
+const editDrawingNumberInput = document.getElementById('editDrawingNumber');
+const editProductNameInput = document.getElementById('editProductName');
+const editPartNameInput = document.getElementById('editPartName');
+const editClientNameInput = document.getElementById('editClientName');
+
+// 編集モーダルを開く
+function openEditModal(drawing) {
+  editIdInput.value = drawing.id;
+  editFileNameInput.value = drawing.fileName;
+  editDrawingNumberInput.value = drawing.drawingNumber || '';
+  editProductNameInput.value = drawing.productName || '';
+  editPartNameInput.value = drawing.partName || '';
+  editClientNameInput.value = drawing.clientName || '';
+
+  editModal.classList.add('show');
+}
+
+// 編集モーダルを閉じる
+function closeEditModal() {
+  editModal.classList.remove('show');
+}
+
+// モーダルを閉じるイベント
+closeEditModalBtn.addEventListener('click', closeEditModal);
+cancelEditBtn.addEventListener('click', closeEditModal);
+
+// モーダル背景クリックで閉じる
+editModal.addEventListener('click', (e) => {
+  if (e.target === editModal) {
+    closeEditModal();
+  }
+});
+
+// ESCキーでモーダルを閉じる
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && editModal.classList.contains('show')) {
+    closeEditModal();
+  }
+});
+
+// 編集を保存
+saveEditBtn.addEventListener('click', async () => {
+  const id = parseInt(editIdInput.value);
+  const drawingNumber = editDrawingNumberInput.value.trim();
+  const productName = editProductNameInput.value.trim();
+  const partName = editPartNameInput.value.trim();
+  const clientName = editClientNameInput.value.trim();
+
+  try {
+    statusText.textContent = 'メタデータを更新中...';
+
+    const response = await fetch(`/api/drawing/${id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        drawingNumber,
+        productName,
+        partName,
+        clientName
+      })
+    });
+
+    const data = await response.json();
+
+    if (response.ok && data.success) {
+      statusText.textContent = data.message;
+      closeEditModal();
+
+      // 検索結果を自動更新
+      await performSearch();
+
+      setTimeout(() => {
+        statusText.textContent = '準備完了';
+      }, 3000);
+    } else {
+      throw new Error(data.error || '更新に失敗しました');
+    }
+
+  } catch (error) {
+    console.error('Update error:', error);
+    statusText.textContent = '更新に失敗しました';
+    alert(`更新エラー: ${error.message}`);
+
+    setTimeout(() => {
+      statusText.textContent = '準備完了';
+    }, 3000);
+  }
+});

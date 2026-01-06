@@ -104,6 +104,45 @@
     </div>
   </div>
 
+  <!-- 編集モーダル -->
+  <div id="editModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>メタデータ編集</h2>
+        <button class="modal-close" id="closeEditModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="editForm">
+          <input type="hidden" id="editId">
+          <div class="form-group">
+            <label for="editFileName">ファイル名</label>
+            <input type="text" id="editFileName" class="form-input" readonly>
+          </div>
+          <div class="form-group">
+            <label for="editDrawingNumber">図版番号</label>
+            <input type="text" id="editDrawingNumber" class="form-input" placeholder="図版番号を入力">
+          </div>
+          <div class="form-group">
+            <label for="editProductName">品名</label>
+            <input type="text" id="editProductName" class="form-input" placeholder="品名を入力">
+          </div>
+          <div class="form-group">
+            <label for="editPartName">部品名</label>
+            <input type="text" id="editPartName" class="form-input" placeholder="部品名を入力">
+          </div>
+          <div class="form-group">
+            <label for="editClientName">施主名</label>
+            <input type="text" id="editClientName" class="form-input" placeholder="施主名を入力">
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button id="cancelEdit" class="btn-secondary">キャンセル</button>
+        <button id="saveEdit" class="btn-primary">保存</button>
+      </div>
+    </div>
+  </div>
+
   <!-- OCR処理用（Tesseract.js） -->
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.0.4/dist/tesseract.min.js"></script>
   <!-- アプリケーションロジック -->
