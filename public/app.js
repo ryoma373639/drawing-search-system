@@ -93,11 +93,33 @@ async function uploadFiles(files) {
       return ext.endsWith('.jpg') || ext.endsWith('.jpeg') || ext.endsWith('.png') || ext.endsWith('.tiff') || ext.endsWith('.tif');
     });
 
+    const ocrTexts = {};
+
     if (imageFiles.length > 0) {
-      statusText.textContent = `画像からテキストを抽出中... (${imageFiles.length}件)`;
-      // OCR処理は時間がかかるため、バックグラウンドで実行
-      // ここでは簡易的にスキップ（本格実装時はTesseract.jsを使用）
+      statusText.textContent = `画像からテキストを抽出中... (0/${imageFiles.length})`;
+
+      // Tesseract.jsを使用してOCR処理
+      for (let i = 0; i < imageFiles.length; i++) {
+        const file = imageFiles[i];
+        statusText.textContent = `画像からテキストを抽出中... (${i + 1}/${imageFiles.length}) - ${file.name}`;
+
+        try {
+          const text = await performOCR(file);
+          ocrTexts[file.name] = text;
+          console.log(`OCR completed for ${file.name}: ${text.substring(0, 100)}...`);
+        } catch (error) {
+          console.error(`OCR failed for ${file.name}:`, error);
+          ocrTexts[file.name] = '';
+        }
+      }
     }
+
+    // OCRテキストをFormDataに追加
+    if (Object.keys(ocrTexts).length > 0) {
+      formData.append('ocrTexts', JSON.stringify(ocrTexts));
+    }
+
+    statusText.textContent = 'サーバーにアップロード中...';
 
     const response = await fetch('/api/upload', {
       method: 'POST',
@@ -127,6 +149,30 @@ async function uploadFiles(files) {
     statusText.textContent = 'アップロードに失敗しました';
   } finally {
     isUploading = false;
+  }
+}
+
+// Tesseract.jsを使用してOCR処理を実行
+async function performOCR(file) {
+  try {
+    // Tesseract.jsのワーカーを作成
+    const { data: { text } } = await Tesseract.recognize(
+      file,
+      'jpn+eng', // 日本語と英語の両方を認識
+      {
+        logger: info => {
+          // 進捗情報をコンソールに出力（オプション）
+          if (info.status === 'recognizing text') {
+            console.log(`OCR progress: ${Math.round(info.progress * 100)}%`);
+          }
+        }
+      }
+    );
+
+    return text;
+  } catch (error) {
+    console.error('OCR error:', error);
+    throw error;
   }
 }
 

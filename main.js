@@ -148,13 +148,24 @@ function startServer() {
         return res.status(400).json({ error: 'ファイルがアップロードされていません' });
       }
 
+      // OCRテキストを受け取る（フロントエンドから送信される）
+      let ocrTexts = {};
+      if (req.body.ocrTexts) {
+        try {
+          ocrTexts = JSON.parse(req.body.ocrTexts);
+        } catch (e) {
+          console.error('OCR texts parse error:', e);
+        }
+      }
+
       const results = [];
       const insert = db.prepare(`
         INSERT INTO drawings (fileName, fileSize, fileType, filePath, drawingNumber, productName, partName, clientName, uploadedAt)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
-      for (const file of files) {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
         const { drawingNumber, productName } = parseFileName(file.originalname);
         const fileExt = path.extname(file.originalname).toLowerCase();
 
@@ -167,6 +178,15 @@ function startServer() {
           extractedText = await extractTextFromPDF(file.buffer);
           partName = extractPartName(extractedText);
           clientName = extractClientName(extractedText);
+        }
+        // 画像の場合はフロントエンドから送られたOCRテキストを使用
+        else if (['.jpg', '.jpeg', '.png', '.tiff', '.tif'].includes(fileExt)) {
+          const ocrText = ocrTexts[file.originalname] || '';
+          if (ocrText) {
+            extractedText = ocrText;
+            partName = extractPartName(extractedText);
+            clientName = extractClientName(extractedText);
+          }
         }
 
         // ファイルをディスクに保存
