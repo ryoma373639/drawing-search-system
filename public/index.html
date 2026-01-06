@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>図面検索システム - テスト版</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <!-- ヘッダー -->
+    <header class="header">
+      <h1>📐 図面検索システム（テスト版）</h1>
+      <div class="header-buttons">
+        <button id="uploadBtn" class="btn-primary">📤 ファイルを追加</button>
+        <button id="clearBtn" class="btn-secondary">🗑️ 全削除</button>
+      </div>
+    </header>
+
+    <!-- ファイルアップロードエリア -->
+    <div class="upload-area" id="uploadArea">
+      <input type="file" id="fileInput" multiple accept=".dwg,.dxf,.pdf,.jpg,.jpeg,.png,.tiff,.tif" style="display: none;" />
+      <div class="upload-content">
+        <p class="upload-icon">📁</p>
+        <p class="upload-text">ここにファイルをドラッグ&ドロップ</p>
+        <p class="upload-subtext">または「ファイルを追加」ボタンをクリック</p>
+        <p class="upload-support">対応形式: .dwg, .dxf, .pdf, .jpg, .png, .tiff</p>
+      </div>
+    </div>
+
+    <!-- ステータスバー -->
+    <div class="status-bar">
+      <span id="statusText">準備完了</span>
+      <span id="statsText">登録済み: 0件</span>
+    </div>
+
+    <!-- 検索バー -->
+    <div class="search-container">
+      <input
+        type="text"
+        id="searchInput"
+        class="search-input"
+        placeholder="図版番号、品名、部品名、施主名で検索..."
+        autofocus
+      />
+      <button id="searchBtn" class="btn-primary">🔍 検索</button>
+    </div>
+
+    <!-- 検索結果 -->
+    <div class="results-container">
+      <div class="results-header">
+        <h2>検索結果</h2>
+        <span id="resultsCount"></span>
+      </div>
+
+      <div id="resultsList" class="results-list">
+        <!-- 検索結果がここに表示されます -->
+      </div>
+
+      <div id="noResults" class="no-results" style="display: none;">
+        <p>検索結果がありません</p>
+      </div>
+
+      <div id="welcomeMessage" class="welcome-message">
+        <h3>ようこそ！</h3>
+        <p>「ファイルを追加」ボタンをクリックするか、</p>
+        <p>上のエリアにファイルをドラッグ&ドロップしてください。</p>
+        <br>
+        <p class="note">※ このテスト版はブラウザのメモリ内にデータを保存します。</p>
+        <p class="note">ページをリロードするとデータは消去されます。</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- OCR処理用（Tesseract.js） -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.0.4/dist/tesseract.min.js"></script>
+  <!-- アプリケーションロジック -->
+  <script src="app.js"></script>
+</body>
+</html>

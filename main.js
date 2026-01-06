@@ -1,0 +1,407 @@
+const { app, BrowserWindow } = require('electron');
+const path = require('path');
+const http = require('http');
+const fs = require('fs');
+
+// Expressサーバーを同じプロセス内で起動
+const express = require('express');
+const multer = require('multer');
+const pdfParse = require('pdf-parse');
+const Database = require('better-sqlite3');
+
+let mainWindow;
+let server;
+let db;
+
+// データ保存ディレクトリ
+const userDataPath = app.getPath('userData');
+const dbPath = path.join(userDataPath, 'drawings.db');
+const filesDir = path.join(userDataPath, 'files');
+
+// データディレクトリを作成
+if (!fs.existsSync(filesDir)) {
+  fs.mkdirSync(filesDir, { recursive: true });
+}
+
+// データベース初期化
+function initDatabase() {
+  db = new Database(dbPath);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS drawings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      fileName TEXT NOT NULL,
+      fileSize INTEGER,
+      fileType TEXT,
+      filePath TEXT,
+      drawingNumber TEXT,
+      productName TEXT,
+      partName TEXT,
+      clientName TEXT,
+      uploadedAt TEXT
+    )
+  `);
+
+  console.log('データベース初期化完了:', dbPath);
+  console.log('ファイル保存先:', filesDir);
+}
+
+function startServer() {
+  const expressApp = express();
+  const PORT = 3001;
+
+  // ファイルアップロード設定（メモリに保存）
+  const storage = multer.memoryStorage();
+  const upload = multer({
+    storage: storage,
+    limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
+    fileFilter: (req, file, cb) => {
+      const ext = path.extname(file.originalname).toLowerCase();
+      if (['.dwg', '.dxf', '.pdf', '.jpg', '.jpeg', '.png', '.tiff', '.tif'].includes(ext)) {
+        cb(null, true);
+      } else {
+        cb(new Error('サポートされていないファイル形式です'));
+      }
+    }
+  });
+
+  // 静的ファイル配信
+  expressApp.use(express.static(path.join(__dirname, 'public')));
+  expressApp.use(express.json());
+
+  // ファイル名から図版番号と品名を抽出
+  function parseFileName(fileName) {
+    const nameWithoutExt = path.parse(fileName).name;
+    const parts = nameWithoutExt.split('_');
+
+    let drawingNumber = '';
+    let productName = '';
+
+    if (parts.length >= 2) {
+      drawingNumber = parts[0].trim();
+      productName = parts.slice(1).join('_').trim();
+    } else if (parts.length === 1) {
+      drawingNumber = parts[0].trim();
+    }
+
+    return { drawingNumber, productName };
+  }
+
+  // PDFからテキスト抽出
+  async function extractTextFromPDF(buffer) {
+    try {
+      const data = await pdfParse(buffer);
+      return data.text;
+    } catch (error) {
+      console.error('PDF extraction error:', error);
+      return '';
+    }
+  }
+
+  // テキストから部品名を抽出
+  function extractPartName(text) {
+    const patterns = [
+      /部品名[：:]\s*([^\n\r]+)/,
+      /部品[：:]\s*([^\n\r]+)/,
+      /品名[：:]\s*([^\n\r]+)/,
+      /PART[：:]\s*([^\n\r]+)/i,
+      /COMPONENT[：:]\s*([^\n\r]+)/i
+    ];
+
+    for (const pattern of patterns) {
+      const match = text.match(pattern);
+      if (match && match[1]) {
+        return match[1].trim().substring(0, 100);
+      }
+    }
+    return '';
+  }
+
+  // テキストから施主名を抽出
+  function extractClientName(text) {
+    const patterns = [
+      /施主[：:]\s*([^\n\r]+)/,
+      /発注者[：:]\s*([^\n\r]+)/,
+      /クライアント[：:]\s*([^\n\r]+)/,
+      /CLIENT[：:]\s*([^\n\r]+)/i,
+      /OWNER[：:]\s*([^\n\r]+)/i,
+      /([^\n\r]*株式会社[^\n\r]*)/,
+      /([^\n\r]*有限会社[^\n\r]*)/,
+      /([^\n\r]*合同会社[^\n\r]*)/
+    ];
+
+    for (const pattern of patterns) {
+      const match = text.match(pattern);
+      if (match && match[1]) {
+        return match[1].trim().substring(0, 100);
+      }
+    }
+    return '';
+  }
+
+  // ファイルアップロードAPI
+  expressApp.post('/api/upload', upload.array('files'), async (req, res) => {
+    try {
+      const files = req.files;
+
+      if (!files || files.length === 0) {
+        return res.status(400).json({ error: 'ファイルがアップロードされていません' });
+      }
+
+      const results = [];
+      const insert = db.prepare(`
+        INSERT INTO drawings (fileName, fileSize, fileType, filePath, drawingNumber, productName, partName, clientName, uploadedAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      for (const file of files) {
+        const { drawingNumber, productName } = parseFileName(file.originalname);
+        const fileExt = path.extname(file.originalname).toLowerCase();
+
+        let extractedText = '';
+        let partName = '';
+        let clientName = '';
+
+        // PDFの場合はテキスト抽出
+        if (fileExt === '.pdf') {
+          extractedText = await extractTextFromPDF(file.buffer);
+          partName = extractPartName(extractedText);
+          clientName = extractClientName(extractedText);
+        }
+
+        // ファイルをディスクに保存
+        const timestamp = Date.now();
+        const safeFileName = `${timestamp}_${file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+        const filePath = path.join(filesDir, safeFileName);
+        fs.writeFileSync(filePath, file.buffer);
+
+        // データベースに登録
+        const info = insert.run(
+          file.originalname,
+          file.size,
+          fileExt.replace('.', ''),
+          filePath,
+          drawingNumber,
+          productName,
+          partName,
+          clientName,
+          new Date().toISOString()
+        );
+
+        results.push({
+          id: info.lastInsertRowid,
+          fileName: file.originalname,
+          drawingNumber: drawingNumber,
+          productName: productName
+        });
+      }
+
+      res.json({
+        success: true,
+        message: `${files.length}件のファイルを登録しました`,
+        files: results
+      });
+
+    } catch (error) {
+      console.error('Upload error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // 検索API
+  expressApp.get('/api/search', (req, res) => {
+    try {
+      const query = req.query.q || '';
+
+      let results;
+      if (!query.trim()) {
+        // クエリが空の場合は全件返す（最新100件）
+        results = db.prepare(`
+          SELECT id, fileName, fileType, fileSize, drawingNumber, productName, partName, clientName, uploadedAt
+          FROM drawings
+          ORDER BY id DESC
+          LIMIT 100
+        `).all();
+      } else {
+        // 検索実行
+        const searchTerm = `%${query.trim()}%`;
+        results = db.prepare(`
+          SELECT id, fileName, fileType, fileSize, drawingNumber, productName, partName, clientName, uploadedAt
+          FROM drawings
+          WHERE fileName LIKE ? OR drawingNumber LIKE ? OR productName LIKE ? OR partName LIKE ? OR clientName LIKE ?
+          LIMIT 100
+        `).all(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+      }
+
+      res.json({ results, total: results.length });
+
+    } catch (error) {
+      console.error('Search error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // ファイルダウンロードAPI
+  expressApp.get('/api/download/:id', (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const drawing = db.prepare('SELECT * FROM drawings WHERE id = ?').get(id);
+
+      if (!drawing) {
+        return res.status(404).json({ error: 'ファイルが見つかりません' });
+      }
+
+      // ファイルを読み込んで送信
+      const fileBuffer = fs.readFileSync(drawing.filePath);
+
+      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(drawing.fileName)}"`);
+      res.setHeader('Content-Type', 'application/octet-stream');
+      res.send(fileBuffer);
+
+    } catch (error) {
+      console.error('Download error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // 統計情報API
+  expressApp.get('/api/stats', (req, res) => {
+    try {
+      const count = db.prepare('SELECT COUNT(*) as total FROM drawings').get();
+      const latest = db.prepare('SELECT uploadedAt FROM drawings ORDER BY id DESC LIMIT 1').get();
+
+      res.json({
+        totalFiles: count.total,
+        lastUploaded: latest ? latest.uploadedAt : null
+      });
+    } catch (error) {
+      console.error('Stats error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // 全削除API
+  expressApp.delete('/api/clear', (req, res) => {
+    try {
+      // すべてのファイルを削除
+      const drawings = db.prepare('SELECT filePath FROM drawings').all();
+      drawings.forEach(drawing => {
+        try {
+          if (fs.existsSync(drawing.filePath)) {
+            fs.unlinkSync(drawing.filePath);
+          }
+        } catch (err) {
+          console.error('File delete error:', err);
+        }
+      });
+
+      // データベースをクリア
+      db.prepare('DELETE FROM drawings').run();
+      db.prepare('DELETE FROM sqlite_sequence WHERE name = "drawings"').run();
+
+      res.json({ success: true, message: '全てのデータを削除しました' });
+    } catch (error) {
+      console.error('Clear error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // サーバー起動
+  return new Promise((resolve, reject) => {
+    server = expressApp.listen(PORT, () => {
+      console.log(`\n========================================`);
+      console.log(`  図面検索システム - テスト版`);
+      console.log(`========================================`);
+      console.log(`  🌐 サーバー起動: http://localhost:${PORT}`);
+      console.log(`  💾 データ保存先: ${filesDir}`);
+      console.log(`========================================\n`);
+      resolve();
+    }).on('error', (err) => {
+      console.error('サーバー起動エラー:', err);
+      if (err.code === 'EADDRINUSE') {
+        console.log(`ポート ${PORT} は既に使用されています。アプリを再起動してください。`);
+      }
+      reject(err);
+    });
+  });
+}
+
+function createWindow() {
+  mainWindow = new BrowserWindow({
+    width: 1400,
+    height: 900,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true
+    },
+    title: '図面検索システム - テスト版'
+  });
+
+  // サーバーが起動するまで待ってからロード
+  waitForServer(() => {
+    mainWindow.loadURL('http://localhost:3001');
+  });
+
+  mainWindow.on('closed', function () {
+    mainWindow = null;
+  });
+}
+
+function waitForServer(callback) {
+  const checkServer = () => {
+    http.get('http://localhost:3001', (res) => {
+      console.log('サーバー起動確認: ステータス', res.statusCode);
+      callback();
+    }).on('error', (err) => {
+      console.log('サーバー待機中...');
+      setTimeout(checkServer, 200);
+    });
+  };
+  checkServer();
+}
+
+app.whenReady().then(async () => {
+  try {
+    initDatabase();
+    await startServer();
+    createWindow();
+  } catch (error) {
+    console.error('アプリ起動エラー:', error);
+    app.quit();
+  }
+
+  app.on('activate', function () {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
+});
+
+app.on('window-all-closed', function () {
+  // macOSでは×ボタンでウィンドウを閉じてもアプリは動作し続ける
+  // サーバーは停止しない
+  if (process.platform !== 'darwin') {
+    // Windows/Linuxでは完全終了
+    if (server) {
+      server.close(() => {
+        console.log('サーバーを停止しました');
+      });
+    }
+    if (db) {
+      db.close();
+    }
+    app.quit();
+  }
+  // macOSの場合は何もしない（サーバーは動作し続ける）
+});
+
+app.on('before-quit', () => {
+  // アプリを完全に終了する時だけサーバーを停止
+  if (server) {
+    server.close(() => {
+      console.log('サーバーを停止しました（アプリ終了前）');
+    });
+  }
+  if (db) {
+    db.close();
+    console.log('データベースを閉じました');
+  }
+});
