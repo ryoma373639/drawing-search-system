@@ -129,27 +129,53 @@
 
 ### ソースからビルド
 
-### 事前準備
+#### 1. 事前準備
 
 ```bash
 npm install
 ```
 
-### 開発モードで起動
+#### 2. 開発モードで起動
 
 ```bash
 npm start
 ```
 
-### パッケージング
+#### 3. 実行可能ファイル(.app/.exe)のビルド
 
+**macOS用アプリをビルド:**
 ```bash
-# macOS用
 npm run build:mac
+```
+→ `dist/図面検索システム-1.0.0.dmg` と `dist/mac/図面検索システム.app` が生成されます
 
-# Windows用
+**Windows用アプリをビルド:**
+```bash
 npm run build:win
 ```
+→ `dist/図面検索システム Setup 1.0.0.exe` と `dist/図面検索システム 1.0.0.exe` (ポータブル版) が生成されます
+
+**両方同時にビルド:**
+```bash
+npm run build
+```
+
+#### 4. Dropbox共有フォルダへの配置
+
+ビルド後:
+
+**macOS:**
+```bash
+# .appファイルをDropboxにコピー
+cp -r "dist/mac/図面検索システム.app" ~/Dropbox/図面検索システム/
+```
+
+**Windows:**
+```
+dist\図面検索システム 1.0.0.exe (ポータブル版) を Dropbox に配置
+```
+
+これで、Dropbox共有フォルダ内のアプリアイコンをダブルクリックするだけで起動できます！
 
 ### 技術スタック
 

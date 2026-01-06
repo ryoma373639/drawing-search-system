@@ -1,14 +1,82 @@
 {
-  "name": "drawing-search-test",
+  "name": "drawing-search-system",
   "version": "1.0.0",
   "description": "図面検索システム",
   "main": "main.js",
   "author": "",
   "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "build:mac": "electron-builder --mac",
+    "build:win": "electron-builder --win",
+    "build": "electron-builder --mac --win"
+  },
   "dependencies": {
     "better-sqlite3": "^12.5.0",
     "express": "^4.18.2",
     "multer": "^1.4.5-lts.1",
     "pdf-parse": "^1.1.1"
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
+  },
+  "build": {
+    "appId": "com.drawingsearch.app",
+    "productName": "図面検索システム",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "public/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["x64", "arm64"]
+        },
+        {
+          "target": "zip",
+          "arch": ["x64", "arm64"]
+        }
+      ]
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "dmg": {
+      "contents": [
+        {
+          "x": 410,
+          "y": 150,
+          "type": "link",
+          "path": "/Applications"
+        },
+        {
+          "x": 130,
+          "y": 150,
+          "type": "file"
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
   }
 }
