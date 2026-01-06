@@ -280,6 +280,44 @@ function startServer() {
     }
   });
 
+  // 個別削除API
+  expressApp.delete('/api/drawing/:id', (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+
+      // ファイル情報を取得
+      const drawing = db.prepare('SELECT * FROM drawings WHERE id = ?').get(id);
+
+      if (!drawing) {
+        return res.status(404).json({ error: 'ファイルが見つかりません' });
+      }
+
+      // ファイルシステムからファイルを削除
+      try {
+        if (fs.existsSync(drawing.filePath)) {
+          fs.unlinkSync(drawing.filePath);
+          console.log(`File deleted: ${drawing.filePath}`);
+        }
+      } catch (err) {
+        console.error('File delete error:', err);
+        return res.status(500).json({ error: 'ファイルの削除に失敗しました' });
+      }
+
+      // データベースからレコードを削除
+      db.prepare('DELETE FROM drawings WHERE id = ?').run(id);
+
+      res.json({
+        success: true,
+        message: `${drawing.fileName} を削除しました`,
+        deletedId: id
+      });
+
+    } catch (error) {
+      console.error('Delete error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // 全削除API
   expressApp.delete('/api/clear', (req, res) => {
     try {

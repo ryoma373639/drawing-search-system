@@ -265,6 +265,14 @@ body {
   background: #5568d3;
 }
 
+.delete-btn {
+  background: #f44336;
+}
+
+.delete-btn:hover {
+  background: #d32f2f;
+}
+
 /* メッセージ */
 .no-results {
   text-align: center;

@@ -212,6 +212,7 @@ function createResultItem(result) {
     </div>
     <div class="result-actions">
       <button class="action-btn download-btn" data-id="${result.id}">📥 ダウンロード</button>
+      <button class="action-btn delete-btn" data-id="${result.id}">🗑️ 削除</button>
     </div>
   `;
 
@@ -220,6 +221,13 @@ function createResultItem(result) {
   downloadBtn.addEventListener('click', async (e) => {
     e.stopPropagation();
     await downloadFile(result.id, result.fileName);
+  });
+
+  // 削除ボタン
+  const deleteBtn = div.querySelector('.delete-btn');
+  deleteBtn.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    await deleteFile(result.id, result.fileName);
   });
 
   return div;
@@ -248,6 +256,49 @@ async function downloadFile(id, fileName) {
   } catch (error) {
     console.error('Download error:', error);
     alert('ダウンロードに失敗しました');
+  }
+}
+
+// ファイル削除
+async function deleteFile(id, fileName) {
+  // 削除確認ダイアログ
+  if (!confirm(`「${fileName}」を削除しますか？\n\nこの操作は取り消せません。`)) {
+    return;
+  }
+
+  try {
+    statusText.textContent = `${fileName} を削除中...`;
+
+    const response = await fetch(`/api/drawing/${id}`, {
+      method: 'DELETE'
+    });
+
+    const data = await response.json();
+
+    if (response.ok && data.success) {
+      statusText.textContent = data.message;
+
+      // 検索結果を自動更新
+      await performSearch();
+
+      // 統計情報を更新
+      updateStats();
+
+      setTimeout(() => {
+        statusText.textContent = '準備完了';
+      }, 3000);
+    } else {
+      throw new Error(data.error || '削除に失敗しました');
+    }
+
+  } catch (error) {
+    console.error('Delete error:', error);
+    statusText.textContent = '削除に失敗しました';
+    alert(`削除エラー: ${error.message}`);
+
+    setTimeout(() => {
+      statusText.textContent = '準備完了';
+    }, 3000);
   }
 }
 
