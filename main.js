@@ -14,11 +14,19 @@ let server;
 let db;
 
 // データ保存ディレクトリ
-const userDataPath = app.getPath('userData');
-const dbPath = path.join(userDataPath, 'drawings.db');
-const filesDir = path.join(userDataPath, 'files');
+// アプリと同じディレクトリにdataフォルダを作成（Dropbox共有対応）
+const appDir = app.isPackaged
+  ? path.dirname(app.getPath('exe'))  // パッケージ化されている場合
+  : __dirname;                         // 開発環境の場合
+
+const dataDir = path.join(appDir, 'data');
+const dbPath = path.join(dataDir, 'drawings.db');
+const filesDir = path.join(dataDir, 'files');
 
 // データディレクトリを作成
+if (!fs.existsSync(dataDir)) {
+  fs.mkdirSync(dataDir, { recursive: true });
+}
 if (!fs.existsSync(filesDir)) {
   fs.mkdirSync(filesDir, { recursive: true });
 }
