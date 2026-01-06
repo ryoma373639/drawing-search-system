@@ -146,6 +146,21 @@
     </div>
   </div>
 
+  <!-- プレビューモーダル -->
+  <div id="previewModal" class="modal">
+    <div class="modal-content modal-preview">
+      <div class="modal-header">
+        <h2 id="previewTitle">ファイルプレビュー</h2>
+        <button class="modal-close" id="closePreviewModal">&times;</button>
+      </div>
+      <div class="modal-body modal-preview-body">
+        <div id="previewContainer" class="preview-container">
+          <!-- プレビュー内容がここに表示されます -->
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- OCR処理用（Tesseract.js） -->
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.0.4/dist/tesseract.min.js"></script>
   <!-- アプリケーションロジック -->

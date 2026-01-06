@@ -306,6 +306,43 @@ function startServer() {
     }
   });
 
+  // ファイルプレビューAPI
+  expressApp.get('/api/preview/:id', (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const drawing = db.prepare('SELECT * FROM drawings WHERE id = ?').get(id);
+
+      if (!drawing) {
+        return res.status(404).json({ error: 'ファイルが見つかりません' });
+      }
+
+      // ファイルを読み込んで送信
+      const fileBuffer = fs.readFileSync(drawing.filePath);
+
+      // ファイルタイプに応じたContent-Typeを設定
+      const contentTypes = {
+        'pdf': 'application/pdf',
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'png': 'image/png',
+        'tiff': 'image/tiff',
+        'tif': 'image/tiff',
+        'dwg': 'application/octet-stream',
+        'dxf': 'application/dxf'
+      };
+
+      const contentType = contentTypes[drawing.fileType] || 'application/octet-stream';
+
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(drawing.fileName)}"`);
+      res.send(fileBuffer);
+
+    } catch (error) {
+      console.error('Preview error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // メタデータ更新API
   expressApp.put('/api/drawing/:id', (req, res) => {
     try {

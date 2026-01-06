@@ -546,3 +546,24 @@ body {
     opacity: 1;
   }
 }
+
+/* プレビューモーダル */
+.modal-preview {
+  max-width: 90%;
+  width: 1200px;
+  max-height: 95vh;
+}
+
+.modal-preview-body {
+  padding: 0;
+  max-height: 75vh;
+  overflow: auto;
+}
+
+.preview-container {
+  min-height: 400px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #f5f5f5;
+}

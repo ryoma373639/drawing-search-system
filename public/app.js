@@ -286,6 +286,10 @@ function createResultItem(result) {
     metaItems.push(`<div class="meta-item"><span class="meta-label">サイズ:</span>${fileSize}</div>`);
   }
 
+  // プレビュー可能なファイルタイプかチェック
+  const previewableTypes = ['pdf', 'jpg', 'jpeg', 'png', 'tiff', 'tif'];
+  const isPreviewable = previewableTypes.includes(result.fileType);
+
   div.innerHTML = `
     <div class="result-header">
       <div class="file-icon">${icon}</div>
@@ -297,11 +301,21 @@ function createResultItem(result) {
       ${metaItems.join('')}
     </div>
     <div class="result-actions">
+      ${isPreviewable ? `<button class="action-btn preview-btn" data-id="${result.id}">👁️ プレビュー</button>` : ''}
       <button class="action-btn download-btn" data-id="${result.id}">📥 ダウンロード</button>
       <button class="action-btn edit-btn" data-id="${result.id}">✏️ 編集</button>
       <button class="action-btn delete-btn" data-id="${result.id}">🗑️ 削除</button>
     </div>
   `;
+
+  // プレビューボタン
+  if (isPreviewable) {
+    const previewBtn = div.querySelector('.preview-btn');
+    previewBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openPreviewModal(result);
+    });
+  }
 
   // ダウンロードボタン
   const downloadBtn = div.querySelector('.download-btn');
@@ -649,5 +663,73 @@ exportCsvBtn.addEventListener('click', async () => {
     setTimeout(() => {
       statusText.textContent = '準備完了';
     }, 3000);
+  }
+});
+
+// プレビューモーダル要素
+const previewModal = document.getElementById('previewModal');
+const closePreviewModalBtn = document.getElementById('closePreviewModal');
+const previewTitle = document.getElementById('previewTitle');
+const previewContainer = document.getElementById('previewContainer');
+
+// プレビューモーダルを開く
+function openPreviewModal(drawing) {
+  previewTitle.textContent = `${drawing.fileName} - プレビュー`;
+  previewContainer.innerHTML = '';
+
+  // ファイルタイプに応じてプレビューを表示
+  const previewUrl = `/api/preview/${drawing.id}`;
+
+  if (drawing.fileType === 'pdf') {
+    // PDFの場合はiframeで表示
+    const iframe = document.createElement('iframe');
+    iframe.src = previewUrl;
+    iframe.style.width = '100%';
+    iframe.style.height = '70vh';
+    iframe.style.border = 'none';
+    previewContainer.appendChild(iframe);
+  } else if (['jpg', 'jpeg', 'png', 'tiff', 'tif'].includes(drawing.fileType)) {
+    // 画像の場合はimgタグで表示
+    const img = document.createElement('img');
+    img.src = previewUrl;
+    img.alt = drawing.fileName;
+    img.style.maxWidth = '100%';
+    img.style.height = 'auto';
+    img.style.display = 'block';
+    img.style.margin = '0 auto';
+    previewContainer.appendChild(img);
+  } else {
+    // 対応していないファイルタイプ
+    const message = document.createElement('p');
+    message.textContent = 'このファイル形式はプレビューできません';
+    message.style.textAlign = 'center';
+    message.style.padding = '40px';
+    message.style.color = '#999';
+    previewContainer.appendChild(message);
+  }
+
+  previewModal.classList.add('show');
+}
+
+// プレビューモーダルを閉じる
+function closePreviewModal() {
+  previewModal.classList.remove('show');
+  previewContainer.innerHTML = ''; // コンテンツをクリア
+}
+
+// モーダルを閉じるイベント
+closePreviewModalBtn.addEventListener('click', closePreviewModal);
+
+// モーダル背景クリックで閉じる
+previewModal.addEventListener('click', (e) => {
+  if (e.target === previewModal) {
+    closePreviewModal();
+  }
+});
+
+// ESCキーでモーダルを閉じる（プレビューモーダル用）
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && previewModal.classList.contains('show')) {
+    closePreviewModal();
   }
 });
