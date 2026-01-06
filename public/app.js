@@ -18,6 +18,9 @@ const sortOrderSelect = document.getElementById('sortOrder');
 const fileTypeFilter = document.getElementById('fileTypeFilter');
 const resetFilterBtn = document.getElementById('resetFilter');
 
+// エクスポートボタン
+const exportCsvBtn = document.getElementById('exportCsvBtn');
+
 // 初期化
 let isUploading = false;
 
@@ -174,16 +177,19 @@ async function performSearch() {
       resultsList.innerHTML = '';
       noResults.style.display = 'block';
       resultsCount.textContent = '';
+      exportCsvBtn.style.display = 'none';
       return;
     }
 
     // 検索結果を表示
     displayResults(data.results);
     resultsCount.textContent = `${data.total}件`;
+    exportCsvBtn.style.display = 'block';
 
   } catch (error) {
     console.error('Search error:', error);
     resultsList.innerHTML = '<div style="text-align: center; padding: 40px; color: #f44336;">検索エラーが発生しました</div>';
+    exportCsvBtn.style.display = 'none';
   }
 }
 
@@ -532,6 +538,67 @@ saveEditBtn.addEventListener('click', async () => {
     console.error('Update error:', error);
     statusText.textContent = '更新に失敗しました';
     alert(`更新エラー: ${error.message}`);
+
+    setTimeout(() => {
+      statusText.textContent = '準備完了';
+    }, 3000);
+  }
+});
+
+// CSVエクスポート
+exportCsvBtn.addEventListener('click', async () => {
+  try {
+    statusText.textContent = 'CSVファイルを生成中...';
+
+    const query = searchInput.value.trim();
+    const sortBy = sortBySelect.value;
+    const sortOrder = sortOrderSelect.value;
+    const fileType = fileTypeFilter.value;
+
+    // URLパラメータを構築
+    const params = new URLSearchParams({
+      q: query,
+      sortBy: sortBy,
+      sortOrder: sortOrder
+    });
+
+    if (fileType) {
+      params.append('fileType', fileType);
+    }
+
+    // CSVファイルをダウンロード
+    const response = await fetch(`/api/export/csv?${params.toString()}`);
+
+    if (!response.ok) {
+      throw new Error('エクスポートに失敗しました');
+    }
+
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+
+    // ファイル名を取得（レスポンスヘッダーから）
+    const contentDisposition = response.headers.get('Content-Disposition');
+    const filenameMatch = contentDisposition && contentDisposition.match(/filename="(.+)"/);
+    const filename = filenameMatch ? filenameMatch[1] : 'drawings.csv';
+
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+
+    statusText.textContent = 'CSVファイルをダウンロードしました';
+
+    setTimeout(() => {
+      statusText.textContent = '準備完了';
+    }, 3000);
+
+  } catch (error) {
+    console.error('Export error:', error);
+    statusText.textContent = 'エクスポートに失敗しました';
+    alert(`エクスポートエラー: ${error.message}`);
 
     setTimeout(() => {
       statusText.textContent = '準備完了';

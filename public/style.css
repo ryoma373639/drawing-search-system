@@ -239,6 +239,23 @@ body {
 #resultsCount {
   font-size: 14px;
   color: #666;
+  margin-left: 10px;
+}
+
+.btn-export {
+  background: #ff9800;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  font-size: 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.3s;
+  font-weight: bold;
+}
+
+.btn-export:hover {
+  background: #f57c00;
 }
 
 .results-list {

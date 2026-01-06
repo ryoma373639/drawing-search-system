@@ -361,6 +361,93 @@ function startServer() {
     }
   });
 
+  // CSVエクスポートAPI
+  expressApp.get('/api/export/csv', (req, res) => {
+    try {
+      const query = req.query.q || '';
+      const sortBy = req.query.sortBy || 'id';
+      const sortOrder = req.query.sortOrder || 'desc';
+      const fileType = req.query.fileType || '';
+
+      // ソート項目のバリデーション
+      const allowedSortFields = ['id', 'fileName', 'fileSize', 'uploadedAt', 'drawingNumber', 'fileType'];
+      const sortField = allowedSortFields.includes(sortBy) ? sortBy : 'id';
+      const sortDirection = sortOrder.toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+
+      // WHERE句の構築
+      let whereClause = '';
+      let params = [];
+
+      if (query.trim()) {
+        whereClause = 'WHERE (fileName LIKE ? OR drawingNumber LIKE ? OR productName LIKE ? OR partName LIKE ? OR clientName LIKE ?)';
+        const searchTerm = `%${query.trim()}%`;
+        params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+      }
+
+      if (fileType) {
+        if (whereClause) {
+          whereClause += ' AND fileType = ?';
+        } else {
+          whereClause = 'WHERE fileType = ?';
+        }
+        params.push(fileType);
+      }
+
+      // SQLクエリの実行
+      const sql = `
+        SELECT id, fileName, fileType, fileSize, drawingNumber, productName, partName, clientName, uploadedAt
+        FROM drawings
+        ${whereClause}
+        ORDER BY ${sortField} ${sortDirection}
+      `;
+
+      const results = db.prepare(sql).all(...params);
+
+      // CSVヘッダー（UTF-8 BOM付き）
+      const BOM = '\uFEFF';
+      let csv = BOM + 'ID,ファイル名,ファイル形式,ファイルサイズ(bytes),図版番号,品名,部品名,施主名,登録日時\n';
+
+      // CSV本文
+      results.forEach(row => {
+        const line = [
+          row.id,
+          escapeCsvField(row.fileName),
+          escapeCsvField(row.fileType),
+          row.fileSize || '',
+          escapeCsvField(row.drawingNumber),
+          escapeCsvField(row.productName),
+          escapeCsvField(row.partName),
+          escapeCsvField(row.clientName),
+          escapeCsvField(row.uploadedAt)
+        ].join(',');
+        csv += line + '\n';
+      });
+
+      // CSVとしてレスポンス
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+      const filename = `drawings_${timestamp}.csv`;
+
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(csv);
+
+    } catch (error) {
+      console.error('CSV export error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // CSV用のフィールドエスケープ関数
+  function escapeCsvField(field) {
+    if (field === null || field === undefined) return '';
+    const str = String(field);
+    // ダブルクォート、カンマ、改行を含む場合はダブルクォートで囲む
+    if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+      return `"${str.replace(/"/g, '""')}"`;
+    }
+    return str;
+  }
+
   // 個別削除API
   expressApp.delete('/api/drawing/:id', (req, res) => {
     try {
