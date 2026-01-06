@@ -212,26 +212,48 @@ function startServer() {
   expressApp.get('/api/search', (req, res) => {
     try {
       const query = req.query.q || '';
+      const sortBy = req.query.sortBy || 'id';
+      const sortOrder = req.query.sortOrder || 'desc';
+      const fileType = req.query.fileType || '';
 
-      let results;
-      if (!query.trim()) {
-        // クエリが空の場合は全件返す（最新100件）
-        results = db.prepare(`
-          SELECT id, fileName, fileType, fileSize, drawingNumber, productName, partName, clientName, uploadedAt
-          FROM drawings
-          ORDER BY id DESC
-          LIMIT 100
-        `).all();
-      } else {
-        // 検索実行
+      // ソート項目のバリデーション
+      const allowedSortFields = ['id', 'fileName', 'fileSize', 'uploadedAt', 'drawingNumber', 'fileType'];
+      const sortField = allowedSortFields.includes(sortBy) ? sortBy : 'id';
+
+      // ソート順序のバリデーション
+      const sortDirection = sortOrder.toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+
+      // WHERE句の構築
+      let whereClause = '';
+      let params = [];
+
+      if (query.trim()) {
+        // 検索クエリがある場合
+        whereClause = 'WHERE (fileName LIKE ? OR drawingNumber LIKE ? OR productName LIKE ? OR partName LIKE ? OR clientName LIKE ?)';
         const searchTerm = `%${query.trim()}%`;
-        results = db.prepare(`
-          SELECT id, fileName, fileType, fileSize, drawingNumber, productName, partName, clientName, uploadedAt
-          FROM drawings
-          WHERE fileName LIKE ? OR drawingNumber LIKE ? OR productName LIKE ? OR partName LIKE ? OR clientName LIKE ?
-          LIMIT 100
-        `).all(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+        params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
       }
+
+      // ファイルタイプフィルター
+      if (fileType) {
+        if (whereClause) {
+          whereClause += ' AND fileType = ?';
+        } else {
+          whereClause = 'WHERE fileType = ?';
+        }
+        params.push(fileType);
+      }
+
+      // SQLクエリの実行
+      const sql = `
+        SELECT id, fileName, fileType, fileSize, drawingNumber, productName, partName, clientName, uploadedAt
+        FROM drawings
+        ${whereClause}
+        ORDER BY ${sortField} ${sortDirection}
+        LIMIT 100
+      `;
+
+      const results = db.prepare(sql).all(...params);
 
       res.json({ results, total: results.length });
 

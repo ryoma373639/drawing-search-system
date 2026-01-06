@@ -46,6 +46,38 @@
       <button id="searchBtn" class="btn-primary">🔍 検索</button>
     </div>
 
+    <!-- ソート/フィルター -->
+    <div class="filter-container">
+      <div class="filter-group">
+        <label for="sortBy">並び順:</label>
+        <select id="sortBy" class="filter-select">
+          <option value="id">登録日時</option>
+          <option value="fileName">ファイル名</option>
+          <option value="fileSize">ファイルサイズ</option>
+          <option value="drawingNumber">図版番号</option>
+        </select>
+        <select id="sortOrder" class="filter-select">
+          <option value="desc">降順</option>
+          <option value="asc">昇順</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label for="fileTypeFilter">ファイル形式:</label>
+        <select id="fileTypeFilter" class="filter-select">
+          <option value="">すべて</option>
+          <option value="pdf">PDF</option>
+          <option value="dwg">DWG</option>
+          <option value="dxf">DXF</option>
+          <option value="jpg">JPG</option>
+          <option value="jpeg">JPEG</option>
+          <option value="png">PNG</option>
+          <option value="tiff">TIFF</option>
+          <option value="tif">TIF</option>
+        </select>
+      </div>
+      <button id="resetFilter" class="btn-secondary-small">🔄 リセット</button>
+    </div>
+
     <!-- 検索結果 -->
     <div class="results-container">
       <div class="results-header">

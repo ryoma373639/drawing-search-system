@@ -12,8 +12,23 @@ const welcomeMessage = document.getElementById('welcomeMessage');
 const statusText = document.getElementById('statusText');
 const statsText = document.getElementById('statsText');
 
+// ソート/フィルター要素
+const sortBySelect = document.getElementById('sortBy');
+const sortOrderSelect = document.getElementById('sortOrder');
+const fileTypeFilter = document.getElementById('fileTypeFilter');
+const resetFilterBtn = document.getElementById('resetFilter');
+
 // 初期化
 let isUploading = false;
+
+// ローカルストレージからソート設定を読み込み
+const savedSortBy = localStorage.getItem('sortBy') || 'id';
+const savedSortOrder = localStorage.getItem('sortOrder') || 'desc';
+const savedFileType = localStorage.getItem('fileType') || '';
+
+sortBySelect.value = savedSortBy;
+sortOrderSelect.value = savedSortOrder;
+fileTypeFilter.value = savedFileType;
 
 // ファイルアップロードボタン
 uploadBtn.addEventListener('click', () => {
@@ -126,6 +141,14 @@ async function updateStats() {
 // 検索実行
 async function performSearch() {
   const query = searchInput.value.trim();
+  const sortBy = sortBySelect.value;
+  const sortOrder = sortOrderSelect.value;
+  const fileType = fileTypeFilter.value;
+
+  // ソート設定をローカルストレージに保存
+  localStorage.setItem('sortBy', sortBy);
+  localStorage.setItem('sortOrder', sortOrder);
+  localStorage.setItem('fileType', fileType);
 
   // ローディング表示
   resultsList.innerHTML = '<div class="loading">検索中</div>';
@@ -133,7 +156,18 @@ async function performSearch() {
   welcomeMessage.style.display = 'none';
 
   try {
-    const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+    // URLパラメータを構築
+    const params = new URLSearchParams({
+      q: query,
+      sortBy: sortBy,
+      sortOrder: sortOrder
+    });
+
+    if (fileType) {
+      params.append('fileType', fileType);
+    }
+
+    const response = await fetch(`/api/search?${params.toString()}`);
     const data = await response.json();
 
     if (data.results.length === 0) {
@@ -342,6 +376,26 @@ searchInput.addEventListener('keypress', (e) => {
   if (e.key === 'Enter') {
     performSearch();
   }
+});
+
+// ソート/フィルター変更時に自動検索
+sortBySelect.addEventListener('change', performSearch);
+sortOrderSelect.addEventListener('change', performSearch);
+fileTypeFilter.addEventListener('change', performSearch);
+
+// フィルターリセット
+resetFilterBtn.addEventListener('click', () => {
+  sortBySelect.value = 'id';
+  sortOrderSelect.value = 'desc';
+  fileTypeFilter.value = '';
+  searchInput.value = '';
+
+  // ローカルストレージをクリア
+  localStorage.removeItem('sortBy');
+  localStorage.removeItem('sortOrder');
+  localStorage.removeItem('fileType');
+
+  performSearch();
 });
 
 // 全削除ボタン
