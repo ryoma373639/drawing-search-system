@@ -38,8 +38,56 @@ function initDatabase() {
       productName TEXT,
       partName TEXT,
       clientName TEXT,
+      extractedText TEXT,
       uploadedAt TEXT
     )
+  `);
+
+  // 既存のテーブルにextractedTextカラムがない場合は追加
+  const columns = db.prepare("PRAGMA table_info(drawings)").all();
+  const hasExtractedText = columns.some(col => col.name === 'extractedText');
+  if (!hasExtractedText) {
+    db.exec('ALTER TABLE drawings ADD COLUMN extractedText TEXT');
+    console.log('extractedTextカラムを追加しました');
+  }
+
+  // FTS5 全文検索インデックスを作成
+  db.exec(`
+    CREATE VIRTUAL TABLE IF NOT EXISTS drawings_fts USING fts5(
+      fileName,
+      drawingNumber,
+      productName,
+      partName,
+      clientName,
+      extractedText,
+      content=drawings,
+      content_rowid=id,
+      tokenize='unicode61 remove_diacritics 2'
+    )
+  `);
+
+  // FTS5インデックスを自動更新するトリガー
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS drawings_ai AFTER INSERT ON drawings BEGIN
+      INSERT INTO drawings_fts(rowid, fileName, drawingNumber, productName, partName, clientName, extractedText)
+      VALUES (new.id, new.fileName, new.drawingNumber, new.productName, new.partName, new.clientName, new.extractedText);
+    END;
+  `);
+
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS drawings_ad AFTER DELETE ON drawings BEGIN
+      INSERT INTO drawings_fts(drawings_fts, rowid, fileName, drawingNumber, productName, partName, clientName, extractedText)
+      VALUES('delete', old.id, old.fileName, old.drawingNumber, old.productName, old.partName, old.clientName, old.extractedText);
+    END;
+  `);
+
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS drawings_au AFTER UPDATE ON drawings BEGIN
+      INSERT INTO drawings_fts(drawings_fts, rowid, fileName, drawingNumber, productName, partName, clientName, extractedText)
+      VALUES('delete', old.id, old.fileName, old.drawingNumber, old.productName, old.partName, old.clientName, old.extractedText);
+      INSERT INTO drawings_fts(rowid, fileName, drawingNumber, productName, partName, clientName, extractedText)
+      VALUES (new.id, new.fileName, new.drawingNumber, new.productName, new.partName, new.clientName, new.extractedText);
+    END;
   `);
 
   db.exec(`
@@ -180,8 +228,8 @@ function startServer() {
 
       const results = [];
       const insert = db.prepare(`
-        INSERT INTO drawings (fileName, fileSize, fileType, filePath, drawingNumber, productName, partName, clientName, uploadedAt)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO drawings (fileName, fileSize, fileType, filePath, drawingNumber, productName, partName, clientName, extractedText, uploadedAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       for (let i = 0; i < files.length; i++) {
@@ -225,6 +273,7 @@ function startServer() {
           productName,
           partName,
           clientName,
+          extractedText,
           new Date().toISOString()
         );
 
@@ -258,54 +307,89 @@ function startServer() {
       const tagId = req.query.tagId || ''; // タグフィルター
 
       // ソート項目のバリデーション
-      const allowedSortFields = ['id', 'fileName', 'fileSize', 'uploadedAt', 'drawingNumber', 'fileType'];
+      const allowedSortFields = ['id', 'fileName', 'fileSize', 'uploadedAt', 'drawingNumber', 'fileType', 'rank'];
       const sortField = allowedSortFields.includes(sortBy) ? sortBy : 'id';
 
       // ソート順序のバリデーション
       const sortDirection = sortOrder.toLowerCase() === 'asc' ? 'ASC' : 'DESC';
 
-      // WHERE句の構築
-      let whereClause = '';
+      let sql;
       let params = [];
+      let results;
 
+      // 検索クエリがある場合はFTS5を使用
       if (query.trim()) {
-        // 検索クエリがある場合
-        whereClause = 'WHERE (fileName LIKE ? OR drawingNumber LIKE ? OR productName LIKE ? OR partName LIKE ? OR clientName LIKE ?)';
-        const searchTerm = `%${query.trim()}%`;
-        params.push(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
-      }
+        // FTS5の検索クエリを構築（特殊文字をエスケープ）
+        const ftsQuery = query.trim().replace(/"/g, '""');
 
-      // ファイルタイプフィルター
-      if (fileType) {
-        if (whereClause) {
-          whereClause += ' AND fileType = ?';
+        // FTS5で検索して、関連度順にソート
+        let baseSql = `
+          SELECT
+            d.id, d.fileName, d.fileType, d.fileSize, d.drawingNumber,
+            d.productName, d.partName, d.clientName, d.uploadedAt,
+            fts.rank
+          FROM drawings d
+          JOIN drawings_fts fts ON d.id = fts.rowid
+          WHERE drawings_fts MATCH ?
+        `;
+
+        params.push(ftsQuery);
+
+        // ファイルタイプフィルター
+        if (fileType) {
+          baseSql += ' AND d.fileType = ?';
+          params.push(fileType);
+        }
+
+        // タグフィルター
+        if (tagId) {
+          baseSql += ' AND d.id IN (SELECT drawingId FROM drawing_tags WHERE tagId = ?)';
+          params.push(parseInt(tagId));
+        }
+
+        // ソート（デフォルトはFTS5のランク順）
+        if (sortField === 'rank' || sortField === 'id') {
+          baseSql += ` ORDER BY fts.rank, d.${sortField} ${sortDirection}`;
         } else {
+          baseSql += ` ORDER BY d.${sortField} ${sortDirection}`;
+        }
+
+        baseSql += ' LIMIT 100';
+        sql = baseSql;
+
+        results = db.prepare(sql).all(...params);
+
+      } else {
+        // 検索クエリがない場合は通常のクエリ
+        let whereClause = '';
+
+        // ファイルタイプフィルター
+        if (fileType) {
           whereClause = 'WHERE fileType = ?';
+          params.push(fileType);
         }
-        params.push(fileType);
-      }
 
-      // タグフィルター
-      if (tagId) {
-        const tagFilterClause = 'id IN (SELECT drawingId FROM drawing_tags WHERE tagId = ?)';
-        if (whereClause) {
-          whereClause += ` AND ${tagFilterClause}`;
-        } else {
-          whereClause = `WHERE ${tagFilterClause}`;
+        // タグフィルター
+        if (tagId) {
+          const tagFilterClause = 'id IN (SELECT drawingId FROM drawing_tags WHERE tagId = ?)';
+          if (whereClause) {
+            whereClause += ` AND ${tagFilterClause}`;
+          } else {
+            whereClause = `WHERE ${tagFilterClause}`;
+          }
+          params.push(parseInt(tagId));
         }
-        params.push(parseInt(tagId));
+
+        sql = `
+          SELECT id, fileName, fileType, fileSize, drawingNumber, productName, partName, clientName, uploadedAt
+          FROM drawings
+          ${whereClause}
+          ORDER BY ${sortField} ${sortDirection}
+          LIMIT 100
+        `;
+
+        results = db.prepare(sql).all(...params);
       }
-
-      // SQLクエリの実行
-      const sql = `
-        SELECT id, fileName, fileType, fileSize, drawingNumber, productName, partName, clientName, uploadedAt
-        FROM drawings
-        ${whereClause}
-        ORDER BY ${sortField} ${sortDirection}
-        LIMIT 100
-      `;
-
-      const results = db.prepare(sql).all(...params);
 
       // 各図面のタグを取得
       const resultsWithTags = results.map(drawing => {
